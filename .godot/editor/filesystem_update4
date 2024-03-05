@@ -1,0 +1,5 @@
+res://Level/Level.tscn
+res://data/level_data.json
+res://Player/Player.tscn
+res://Singletons/GameData.cs
+res://Level/Level.cs

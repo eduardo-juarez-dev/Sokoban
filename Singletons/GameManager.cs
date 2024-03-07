@@ -32,11 +32,6 @@ public partial class GameManager : Node
 		GetTree().ChangeSceneToPacked(_mainScene);
 	}
 
-	// Called every frame. 'delta' is the elapsed time since the previous frame.
-	public override void _Process(double delta)
-	{
-	}
-
 	protected override void Dispose(bool disposing)
 	{
 		base.Dispose(disposing);

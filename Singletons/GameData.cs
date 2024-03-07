@@ -16,10 +16,6 @@ public partial class GameData : Node
 		LoadLevelData();
 	}
 
-	public override void _Process(double delta)
-	{
-	}
-
 	private void LoadLevelData()
 	{
 		var file = FileAccess.Open(LEVEL_DATA_PATH, FileAccess.ModeFlags.Read);

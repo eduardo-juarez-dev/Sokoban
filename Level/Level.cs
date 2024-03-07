@@ -6,6 +6,11 @@ using Sokoban.Models;
 
 public partial class Level : Node2D
 {
+	private GameManager _gameManager;
+	private ScoreSync _scoreSync;
+	private Hud _hud;
+	private GameOverUi _gameOverUi;
+	
 	private GameData _gameData;
 	private TileMap _tileMap;
 	private AnimatedSprite2D _player;
@@ -39,10 +44,14 @@ public partial class Level : Node2D
 	// Called when the node enters the scene tree for the first time.
 	public override void _Ready()
 	{
+		_hud = GetNode<Hud>("CanvasLayer/HUD");
+		_gameManager = GetNode<GameManager>("/root/GameManager");
+		_scoreSync = GetNode<ScoreSync>("/root/ScoreSync");
 		_gameData = GetNode<GameData>("/root/GameData");
 		_tileMap = GetNode<TileMap>("TileMap");
 		_player = GetNode<AnimatedSprite2D>("Player");
 		_camera = GetNode<Camera2D>("Camera2D");
+		_gameOverUi = GetNode<GameOverUi>("CanvasLayer/GameOverUi");
 		
 		SetupLevel();
 	}
@@ -50,6 +59,14 @@ public partial class Level : Node2D
 	// Called every frame. 'delta' is the elapsed time since the previous frame.
 	public override void _Process(double delta)
 	{
+		if(Input.IsActionJustPressed("exit"))
+			_gameManager.LoadMainScene();
+
+		if(Input.IsActionJustPressed("reload"))
+			SetupLevel();
+		
+		_hud.SetMovesLabel(_totalMoves);
+		
 		if (_moving)
 			return;
 
@@ -82,6 +99,38 @@ public partial class Level : Node2D
 	
 	#region GAME LOGIC
 
+	private void CheckGameState()
+	{
+		var usedCells = _tileMap.GetUsedCells(TARGET_LAYER);
+		foreach (var tile in usedCells)
+		{
+			if (!CellIsBox(tile))
+				return;
+		}
+		
+		_gameOverUi.GameOver(_gameManager.GetLevelSelected().ToString(), _totalMoves);
+		_hud.Hide();
+		_scoreSync.LevelCompleted(_gameManager.GetLevelSelected().ToString(), _totalMoves);
+		GD.Print("GAME OVER");
+	}
+
+	private void MoveBox(Vector2I boxTile, Vector2I direction)
+	{
+		var destination = boxTile + direction;
+		
+		_tileMap.EraseCell(BOX_LAYER, boxTile);
+		
+		var usedCells = _tileMap.GetUsedCells(TARGET_LAYER);
+		if (usedCells.Contains(destination))
+		{
+			_tileMap.SetCell(BOX_LAYER, destination, SOURCE_ID, GetAtlasCoordForLayerName(LAYER_KEY_TARGET_BOXES));
+		}
+		else
+		{
+			_tileMap.SetCell(BOX_LAYER, destination, SOURCE_ID, GetAtlasCoordForLayerName(LAYER_KEY_BOXES));
+		}
+	}
+
 	private Vector2I GetPlayerTile()
 	{
 		var playerOffset = _player.GlobalPosition - _tileMap.GlobalPosition;
@@ -89,16 +138,65 @@ public partial class Level : Node2D
 		return new Vector2I(vectorWithOffset.X, vectorWithOffset.Y);
 	}
 
+	private bool CellIsWall(Vector2I cell)
+	{
+		var usedCells = _tileMap.GetUsedCells(WALL_LAYER);
+		return usedCells.Contains(cell);
+	}
+	
+	private bool CellIsBox(Vector2I cell)
+	{
+		var usedCells = _tileMap.GetUsedCells(BOX_LAYER);
+		return usedCells.Contains(cell);
+	}
+	
+	private bool CellIsEmpty(Vector2I cell)
+	{
+		return !CellIsWall(cell) && !CellIsBox(cell);
+	}
+
+	private bool BoxCanMove(Vector2I boxTile, Vector2I direction)
+	{
+		var newTile = boxTile + direction;
+		return CellIsEmpty(newTile);
+	}
+	
 	private void PlayerMove(Vector2I direction)
 	{
 		_moving = true;
 
 		var playerTile = GetPlayerTile();
 		var newTile = playerTile + direction;
-
+		var canMove = true;
+		var boxSeen = false;
+		
 		GD.Print($"direction: {{ \"x\": {direction.X}, \"y\": {direction.Y} }} ");
 		GD.Print($"playerTile: {{ \"x\": {playerTile.X}, \"y\": {playerTile.Y} }} ");
 		GD.Print($"newTile: {{ \"x\": {newTile.X}, \"y\": {newTile.Y} }} ");
+
+		if (CellIsWall(newTile))
+		{
+			GD.Print("wallSeen");
+			canMove = false;
+		}
+		if (CellIsBox(newTile))
+		{
+			GD.Print("boxSeen");
+			boxSeen = true;
+			canMove = BoxCanMove(newTile, direction);
+		}
+		
+		if(canMove)
+		{
+			GD.Print("canMove");
+			_totalMoves += 1;
+			if(boxSeen)
+				MoveBox(newTile, direction);
+
+			PlacePlayerOnTile(newTile);
+			CheckGameState();
+		}
+		
 		
 		_moving = false;
 	}
@@ -112,7 +210,6 @@ public partial class Level : Node2D
 		var newPosition = new Vector2(tileCoord.X * GameData.TILE_SIZE, 
 			                  tileCoord.Y * GameData.TILE_SIZE) + _tileMap.GlobalPosition;
 		_player.GlobalPosition = newPosition;
-		CenterCamera();
 	}
 	
 	private Vector2I GetAtlasCoordForLayerName(string layerName)
@@ -163,10 +260,13 @@ public partial class Level : Node2D
 	private void SetupLevel()
 	{
 		_tileMap.Clear();
-		var levelData = _gameData.GetDataForLabel(1);
+		var levelSelected = _gameManager.GetLevelSelected();
+		var levelData = _gameData.GetDataForLabel(levelSelected);
 		var levelTiles = levelData.tiles;
 		var playerStart = levelData.player_start;
 		GD.Print($"playerStart: {{ \"x\": {playerStart.x}, \"y\": {playerStart.y} }} ");
+
+		_totalMoves = 0;
 		
 		foreach (var layerName in LAYER_MAP.Keys)
 		{
@@ -180,6 +280,10 @@ public partial class Level : Node2D
 		}
 		
 		PlacePlayerOnTile(new Vector2I(playerStart.x, playerStart.y));
+		CenterCamera();
+		// _hud.SetLevelLabel(levelSelected.ToString());
+		_hud.NewGame(levelSelected.ToString());
+		_gameOverUi.NewGame();
 	}
 
 	// for some reason the tutorial's centering could not be possible without adding 12 to tileMapsEnd points

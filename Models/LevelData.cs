@@ -45,7 +45,7 @@ public class Tiles
     public List<Floor> Floor { get; set; }
     public List<Wall> Walls { get; set; }
     public List<Target> Targets { get; set; }
-    public List<object> TargetBoxes { get; set; }
+    public List<Target> TargetBoxes { get; set; }
     public List<Box> Boxes { get; set; }
 }
 
